@@ -62,6 +62,20 @@ progresses, module by module.
   cannot become two separate users. *Assumption:* email is lowercased wholesale
   as the canonical identity.
 
+## 4. Authentication endpoints (Module 1)
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| View style | Plain `APIView` for login/logout/me/session | These are actions, not CRUD over a resource; a ViewSet/router adds indirection for no gain. (ViewSets come later for tasks/users.) |
+| CSRF on login | `csrf_protect` added explicitly to `LoginView` | DRF `SessionAuthentication` only enforces CSRF once a session user exists, so the anonymous login POST is otherwise unprotected. This closes login-CSRF. |
+| CSRF cookie seeding | `GET /session/` uses `ensure_csrf_cookie` | The frontend calls it first to obtain the (non-HttpOnly) `csrftoken` cookie, then echoes it in `X-CSRFToken` on writes. |
+| Rejection status | Anonymous/expired → **403** (DRF default with SessionAuthentication) | DRF returns 403 (not 401) when there is no auth challenge scheme. It is still a hard rejection; noted in case 401 is preferred. |
+| Inactive users | Handled by `authenticate()` returning `None` → 401 | `ModelBackend` rejects inactive users, so no separate check is needed (fail-closed). |
+
+**CSRF flow (documented):** `GET /api/auth/session/` → browser stores `csrftoken`
+cookie (readable by Angular) → Angular sends it as `X-CSRFToken` on every unsafe
+request → Django validates header against cookie. Session cookie stays HttpOnly.
+
 ---
 
 ## Assumptions (brief is silent)
