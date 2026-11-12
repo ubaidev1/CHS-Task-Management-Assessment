@@ -1,229 +1,110 @@
 # Engineering Decisions & Assumptions
 
-This document records every non-trivial decision, the reasoning behind it, and
-the assumptions made where the brief is silent. It is updated as the project
-progresses, module by module.
+Key decisions, the reasoning behind them, and the assumptions made where the
+brief is silent.
 
-> Status key: ✅ decided & implemented · 🔜 planned · 💭 open question
-
----
-
-## 0. Ground rules
+## Ground rules
 
 - **Backend is the source of truth.** Frontend guards are usability only; every
   permission is enforced server-side, including object ownership.
-- **Fail closed.** Private by default (DRF `IsAuthenticated` default permission);
-  endpoints opt *out* of auth explicitly, never the reverse.
-- **No secrets in source control.** All secrets come from the environment; the
-  committed `.env.example` holds variable names and safe sample values only.
-
----
-
-## 1. Project structure & tooling
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Backend folder vs project name | Folder `backend/`, Django project package `taskflow` | Decoupling the settings import path (`taskflow.settings`) from the directory name is clearer and portable; a project literally named `backend` inside `backend/` is confusing. |
-| Settings layout | Split package `taskflow/settings/{base,dev,prod}.py` | The brief requires environment-based configuration. A split expresses "same code, different environment" without scattered `if DEBUG` branches. Selected via `DJANGO_SETTINGS_MODULE` (defaults to `dev` in `manage.py`). |
-| App layout | Flat apps at `backend/` root (`accounts`, `tasks`) | With only two apps an `apps/` container adds nesting for no benefit; flat is simpler. (Would reconsider a package if the app count grew.) |
-| Dependency versions | Latest stable as of 2026-11 (Django 6.1.3, DRF 3.18.3, django-redis 7.0.0, celery 5.7.0, redis 8.1.0, psycopg 3.3.9) | Build on current, supported releases rather than trailing versions. |
-| Config library | `django-environ` | Maps a `.env` file + real env vars onto typed settings; real env vars win (correct for Docker/CI). |
-| DB driver | `psycopg[binary]` (psycopg 3) | Current, actively-developed adapter; psycopg2 is maintenance-only. |
-| Cache backend | `django-redis` | Gives Django's cache API over Redis plus atomic ops and `IGNORE_EXCEPTIONS` graceful degradation (needed for the "Redis unavailable" requirement). |
-| Redis DB split | broker/results on DB `0`, cache on DB `1` | Keeps queue data and cache data isolated in one Redis instance. |
-
-## 2. Authentication & security posture
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Auth mechanism | DRF `SessionAuthentication` only (no Token/JWT) | The brief mandates session-based auth; SessionAuthentication also enforces CSRF on unsafe methods. |
-| Session cookie | `HttpOnly=True` | JS can never read the session id (mitigates XSS session theft). |
-| CSRF cookie | `HttpOnly=False` | Angular must read the CSRF cookie to echo it in the `X-CSRFToken` header (Django's double-submit flow). |
-| Cookie Secure/SameSite | `Secure=False`,`SameSite=Lax` in dev; `Secure=True` in prod, `SameSite` env-driven (`None` only when cross-site, always paired with Secure) | Matches the brief's cookie guidance for same-site vs cross-site topologies. |
-| CORS | Explicit origins + `CORS_ALLOW_CREDENTIALS=True`; never wildcard | Brief forbids wildcard origin with credentialed requests. |
-| Session expiry | 8h age, sliding (`SESSION_SAVE_EVERY_REQUEST`), expire at browser close | Abandoned sessions do not stay usable indefinitely. |
-
-## 3. Custom user model
-
-- ✅ **Custom `accounts.User` (extends `AbstractUser`) created before the first
-  migration.** Swapping the user model later is a breaking, migration-heavy
-  change, so we commit on day one.
-- **Role stored as a `role` CharField** with `choices` (`admin`/`manager`/
-  `employee`, default `employee`). The brief allows "Django Groups/Permissions
-  **or a well-documented alternative**"; a single role field is that
-  alternative — simpler to read and reason about, and a role check is a plain
-  attribute compare (no extra query, no N+1). Permissions are enforced by custom
-  DRF permission classes that read `user.role` (RBAC phase).
-  *Assumption:* one role per user.
-- **Privilege-escalation guard (serializer-level, RBAC phase):** `role` is
-  settable only by Admin on user creation and is read-only to a user editing
-  themselves — a client cannot escalate by sending `role` in a payload.
-- Email is `unique=True` and lowercased on save, so `A@x.com` and `a@x.com`
-  cannot become two separate users. *Assumption:* email is lowercased wholesale
-  as the canonical identity.
-
-## 3a. Seeding demo users
-
-- **Demo users are created by a management command (`seed_users`), not a data
-  migration.** A migration runs in every environment (including prod) and would
-  bake known passwords into source control — both a secret-in-repo violation and
-  a security hole. The command is idempotent and reads passwords from env
-  (`DEMO_*`) with obvious dev-only defaults. (Role *groups* would justify a data
-  migration, but we use a `role` field, so there is nothing structural to seed.)
-
-## 4. Authentication endpoints (Module 1)
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| View style | Plain `APIView` for login/logout/me/session | These are actions, not CRUD over a resource; a ViewSet/router adds indirection for no gain. (ViewSets come later for tasks/users.) |
-| CSRF on login | `csrf_protect` added explicitly to `LoginView` | DRF `SessionAuthentication` only enforces CSRF once a session user exists, so the anonymous login POST is otherwise unprotected. This closes login-CSRF. |
-| CSRF cookie seeding | `GET /session/` uses `ensure_csrf_cookie` | The frontend calls it first to obtain the (non-HttpOnly) `csrftoken` cookie, then echoes it in `X-CSRFToken` on writes. |
-| Rejection status | Anonymous/expired → **403** (DRF default with SessionAuthentication) | DRF returns 403 (not 401) when there is no auth challenge scheme. It is still a hard rejection; noted in case 401 is preferred. |
-| Inactive users | Handled by `authenticate()` returning `None` → 401 | `ModelBackend` rejects inactive users, so no separate check is needed (fail-closed). |
-
-**CSRF flow (documented):** `GET /api/auth/session/` → browser stores `csrftoken`
-cookie (readable by Angular) → Angular sends it as `X-CSRFToken` on every unsafe
-request → Django validates header against cookie. Session cookie stays HttpOnly.
-
-## 5. RBAC, tasks & user management (Module 2)
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| View style | `ModelViewSet` + router for tasks/users | Standard CRUD maps cleanly to a ViewSet and DRF's object-level permission hooks; contrast with the auth APIViews, which are actions, not resources. |
-| Permission enforcement | Reusable `BasePermission` classes (`TaskPermission`, `UserManagementPermission`) | `has_permission` gates the action by role; `has_object_permission` gates the specific object — backend is the source of truth. |
-| Role rules location | Named role sets in `accounts/roles.py`, referenced by permissions, querysets and the dashboard | **Permission rules are defined once as named role sets; changing who can do something means editing one constant, not hunting through the code.** Sets (not functions) were chosen because the role→action matrix is a fixed, declarative table — the whole policy reads in one screen and maps 1:1 to the brief's matrix. Runtime-editable permissions (Django Groups/Permissions) were not used because the matrix is fixed by the brief, so a static, auditable mapping is simpler and safer. Object-ownership stays a separate layer. |
-| Fail-closed querysets | `get_queryset` returns `Task.objects.none()` for any role outside the known set | An unknown/unset role sees nothing, never everything. |
-| Employee task visibility | Queryset scoped in `get_queryset` | Employees' queryset is `assigned_to=self`, so cross-user access by ID returns **404, not 403** (no existence leak). Object permission is defense in depth. |
-| Field-level limit | Employee serializer makes every field except `status` read-only | Enforces "Employee updates only status" server-side; extra payload keys are ignored, not applied. |
-| Ownership | `created_by` set in `perform_create` from `request.user`; read-only in serializer | A client cannot spoof ownership via the payload (tested). |
-| Delete | Admin only (view-level + object-level) | Matches the matrix; Manager/Employee get 403. |
-| User creation | `UserCreateSerializer` (password write-only, `validate_password`); Admin only | Manager can list but not create (403, tested). Role is set only on admin-driven create. |
-| Self-escalation | Non-admin cannot modify users (403) | An employee cannot promote their own role (tested). |
-| FK on_delete | `assigned_to` / `created_by` = `SET_NULL` | Deleting a user never cascades away task history; employee scoping still holds. |
-
-*Assumption:* Admin/Manager may update any task (they manage all); Employee may
-update only the `status` of a task assigned to them. A task may be created
-unassigned and assigned later (the dedicated `/assign/` endpoint is Module 4).
-
-*N+1 note:* task `assigned_to`/`created_by` use DRF's PK-only optimization (no
-per-row query); `select_related` is added as defensive belt-and-suspenders.
-
-*Inactive users:* DRF `SessionAuthentication` rejects users with `is_active=False`
-(returns `None`), so a deactivated user's live session is denied on the next
-request — fail-closed without an extra check.
-
-## 6. Dashboard caching (Module 3)
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Cache key | `dashboard:stats:v{gen}:u{user_id}:r{role}` | User id + role in the key guarantees no cross-user/role leakage; rebuilding the key from the *current* role each request means a role change instantly produces a different key (old entry never served). |
-| Invalidation | Global **generation counter** bumped on any task change | Admin/Manager stats cover all tasks, so any change affects many dashboards; bumping one counter supersedes every cached entry without enumerating users. TTL (300s) is the backstop. |
-| When to invalidate | `post_save`/`post_delete` signal → `transaction.on_commit` | Invalidate only after the change commits, so a concurrent request can't cache pre-commit state under the new generation. |
-| Graceful degradation | Every cache call wrapped in try/except returning a miss | A Redis outage yields a cache miss, and the view falls back to a permission-scoped DB query — correct data, never an error, never out-of-scope. Independent of `IGNORE_EXCEPTIONS` (belt-and-suspenders). |
-| Compute cost | One aggregate (total + completed) + one `my_tasks` count | Two queries regardless of task count; `pending = total − completed` avoids a third. |
-
-*Permission freshness:* authorization is re-evaluated every request (IsAuthenticated + role-in-key), so revoked access takes effect immediately; cached data for an old role is unreachable.
-
-*Honest tradeoff:* if an invalidation is lost during a Redis outage (a brief blip where the entry survives but the generation bump fails), stale **counts** could be served until the 300s TTL expires. This never exposes *unauthorized* data (scope is in the key); it is a bounded count-staleness window, documented here.
-
-## 7. Celery assignment notifications (Module 4)
-
-**Endpoint:** `POST /api/tasks/{id}/assign/` with `{"assigned_to": <id>}` (Admin/Manager).
-
-**How an assignment event is identified & deduplicated:**
-- Each assignment to a *different* user creates an **`AssignmentEvent` row with a
-  UUID primary key**, inside the **same transaction** as the task update.
-- **Only that UUID** is passed to Celery. The worker locks the row
-  (`select_for_update`) and sends **only if `status != SENT`**, then marks it
-  SENT. A Celery re-delivery or manual retry of the same event reuses the same
-  UUID, sees SENT, and **skips** — no duplicate.
-- A genuine **reassignment** creates a **new** row (new UUID) → a new email.
-- Assigning to the **user who already holds the task is a no-op** — no event, no
-  email (documented business rule).
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Idempotency key | Persisted `AssignmentEvent` UUID, created in the request | A key created once and stored survives retries; a timestamp generated inside the task would differ on retry and duplicate. Easier to explain than a composite key, and correctly treats A→B→A as three events. |
-| Enqueue ordering | `transaction.on_commit(lambda: task.delay(...))` | The job is queued only after the DB commits, so the worker never reads an uncommitted/rolled-back event. API returns immediately (`queued: true`). |
-| Retries | `@shared_task(bind=True, max_retries=3, default_retry_delay=10)` | Transient failures (e.g. email backend) are retried; the SENT check keeps retries idempotent. |
-| Logging | info on send/skip, warning on missing event, error+retry on failure | Useful operational trace. |
-| Email backend | Console (dev/default) | The brief accepts it to demonstrate the task runs; no SMTP creds needed. |
-
-**Workflow:** API request → assignment + event saved in PostgreSQL → transaction
-committed → `send_assignment_notification.delay(event_id)` published to the Redis
-broker → Celery worker locks the event, sends the email, marks it SENT.
-
-**Assumption (extension of the brief):** the brief only names `POST /assign/` as
-the notification trigger, but **creating a task already assigned to someone is
-also an assignment**, so task creation with an `assigned_to` notifies via the
-*same* idempotent path (`queue_assignment_notification` → `AssignmentEvent` →
-Celery). Creating an unassigned task sends nothing. This removes the surprise of
-"assigned on creation but no email". The `/assign/` endpoint remains the
-canonical trigger the brief's tests target.
-
-*Honest limitation:* if the email send succeeds but the row update is lost before
-commit (crash in a tiny window), a retry would resend. With the console backend
-this window is negligible; documented rather than solved with a heavier
-outbox-pattern, which would be over-engineering here.
-
-## 8. Angular frontend (Module 5)
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Framework shape | Angular 20 standalone components, signals, lazy-loaded routes | Modern idiomatic Angular; each feature is its own lazy chunk. |
-| State | Signals (`AuthService.user`, per-page `loading/error/data`) | Simple, fine-grained reactivity without extra libraries. |
-| HTTP handling | Functional interceptors: one adds `withCredentials` + `X-CSRFToken`; one handles global 401 → login | Consistent credentialed/CSRF requests; cross-origin needs the CSRF header set manually (Angular's built-in XSRF is same-origin only). |
-| Session bootstrap | `provideAppInitializer` calls `GET /session/` before the first route | Guards see correct auth state on hard refresh, and the CSRF cookie is seeded up front. |
-| Guards | `authGuard` + `roleGuard(...)` | Usability only — routes/actions are hidden for the wrong role, but the backend independently enforces every permission. |
-| API origin | Absolute `http://localhost:8000/api` | Exercises the real cross-origin CORS + session/CSRF path (verified end-to-end) rather than hiding it behind a dev proxy. |
-| Design | Custom design-token system (ink sidebar, indigo accent, status pills, soft cards); no component library | A distinct, cohesive, responsive look; every page has explicit loading, empty and error states. |
-
-- 401 vs 403 split (backend change): unauthenticated → **401** (interceptor routes to
-  login), authorized-but-forbidden → **403** (component shows an inline message).
-- Field-level UI mirrors the backend: Employees only see a status control on their
-  own tasks; managers/admins get full edit + reassign; only admins see delete.
-
-## 9. Delivery: Docker, docs (Module 6)
-
-| Decision | Choice | Why |
-| --- | --- | --- |
-| Containers | Compose with db, redis, backend (gunicorn), worker (celery), frontend (nginx) | One command brings up the whole stack; backend runs migrate + seed on start. |
-| Settings in containers | `dev` settings module | Cookies work over plain HTTP in the demo; `prod` settings enable Secure cookies/HSTS for real HTTPS. |
-| Secrets | Insecure dev defaults overridable from host env (`${DJANGO_SECRET_KEY:-…}`) | No real secret is committed; graders can run without extra setup. |
-| Frontend serving | Multi-stage build → static files via nginx with SPA fallback | Small production image; deep links work. |
-| Admin static | Not collected in the gunicorn image | The Django admin UI is not a deliverable; the JSON API + Angular app are the surfaces. |
-
-*Honest caveat:* Docker is not installed on the development machine, so the
-Compose stack was authored and validated (YAML + build output paths) but not
-run here. The **native** run path (local Postgres 17 + Redis 7) is fully
-exercised, and the cross-origin CORS/CSRF/session flow was verified end-to-end
-with real HTTP requests.
-
----
+- **Fail closed.** Private by default (`IsAuthenticated`); endpoints opt out of
+  auth explicitly, never the reverse.
+- **No secrets in source control.** Config comes from the environment;
+  `.env.example` holds names + safe sample values only.
 
 ## Assumptions (brief is silent)
 
-1. **Task fields** (planned): `title, description, status, assigned_to,
-   created_by, created_at, updated_at`.
-2. **Status values** 🔜: `pending / in_progress / completed`. Used consistently
-   across model, serializers, tests and Angular. **`pending_tasks =
-   total_tasks − completed_tasks`**, i.e. both `pending` and `in_progress`
-   count as pending.
-3. **Employee may change only `status`** on tasks assigned to them — enforced in
-   the serializer, not just the UI.
-4. **Idempotency** 🔜: a persisted `AssignmentEvent` row with a UUID PK, created
-   in the same transaction as the assignment; only the UUID is passed to Celery;
-   the worker sends under a row lock iff not already sent. Retry reuses the UUID
-   (no duplicate); a genuine reassignment creates a new row (new email).
-   Assigning a task to the user who already holds it is a **no-op** (no event).
-5. **User management**: Admin and Manager can view users; only Admin can create
-   users / perform administrative actions (Manager receives 403 on create).
-6. **One role group per user** in normal operation.
+- **Status values:** `pending / in_progress / completed`, used everywhere.
+  `pending_tasks = total_tasks − completed_tasks` (both `pending` and
+  `in_progress` count as pending).
+- **Roles as a field:** `User.role` is a `CharField` with choices — the brief's
+  allowed "well-documented alternative" to Groups. Simpler, and a role check is a
+  plain attribute compare (no extra query). One role per user.
+- **Employee may change only `status`** on tasks assigned to them.
+- **Email** is unique and lowercased on save, so `A@x.com` and `a@x.com` can't
+  become two identities.
+- **Assigning to the current assignee is a no-op** (no event, no email).
+- **Creating a task with an assignee notifies that person** (extension of the
+  brief — see Celery below).
 
----
+## Authentication (Module 1)
 
-## Known constraints in this environment
+- DRF `SessionAuthentication` only (no token/JWT); it also enforces CSRF on
+  authenticated writes.
+- Session cookie is **HttpOnly**; CSRF cookie is **not** HttpOnly so Angular can
+  read it and echo it as `X-CSRFToken`. Secure + SameSite tighten in prod.
+- Login is additionally wrapped in `csrf_protect` (DRF skips CSRF for anonymous
+  requests, which would otherwise leave login unprotected).
+- **Unauthenticated → 401, forbidden → 403** (custom `SessionAuthentication401`),
+  so the frontend can tell "log in again" apart from "not allowed".
+- **CSRF flow:** `GET /auth/session/` sets the `csrftoken` cookie → Angular sends
+  it as `X-CSRFToken` on unsafe requests → Django validates header vs cookie.
 
-- Docker is not installed on the development machine, so Compose files are
-  authored and reviewed but the stack is run natively (local Postgres 18 +
-  Redis 7) during development. Both run paths are documented in the README.
+## RBAC & object-level authorization (Module 2)
+
+- `ModelViewSet` + reusable DRF permission classes (`TaskPermission`,
+  `UserManagementPermission`): `has_permission` gates the action, 
+  `has_object_permission` gates the specific object.
+- **Role capabilities live in one place** (`accounts/roles.py`) as named role
+  sets, referenced by permissions, querysets and the dashboard — changing who can
+  do something is a one-line edit, and the policy reads 1:1 against the matrix.
+- **Employee querysets are scoped** to their own tasks, so cross-user access by
+  ID returns **404, not 403** (no existence leak). Fail-closed: an unknown role
+  gets `none()`.
+- `created_by` and `role` are server-set / read-only, so a client can't escalate
+  via the payload. Delete is Admin-only.
+
+## Redis caching (Module 3)
+
+- Cache key is `dashboard:stats:v{generation}:u{user}:r{role}` with a **300s
+  TTL**. User + role in the key prevents cross-user/role leakage, and rebuilding
+  it from the *current* role means a **role change takes effect immediately**.
+- **Invalidation:** any task change bumps a global generation counter (on
+  `transaction.on_commit`), superseding every cached entry at once.
+- **Graceful degradation:** every cache call is wrapped, so a Redis outage is a
+  cache miss and the view falls back to a permission-scoped DB query.
+- *Trade-off:* if an invalidation is lost during a Redis blip, stale **counts**
+  (never unauthorized data — scope is in the key) could show until the TTL
+  expires. Bounded and acceptable.
+
+## Celery notifications (Module 4)
+
+- **Idempotency key = a persisted `AssignmentEvent` UUID**, created in the same
+  transaction as the assignment. Only the UUID is sent to Celery; the worker
+  sends under a row lock **iff `status != SENT`**, then marks it SENT. A retry /
+  re-delivery reuses the UUID and skips → no duplicate; a reassignment is a new
+  row → a new email.
+- Enqueued **after commit** (`transaction.on_commit`), so the API returns
+  immediately and the worker never sees an uncommitted event. Retries 3×; console
+  email backend.
+- The create path and the `/assign/` endpoint share one helper
+  (`queue_assignment_notification`), so both notify through the same idempotent
+  path. The `/assign/` endpoint stays the canonical trigger the brief's tests hit.
+- *Limitation:* a crash in the tiny window after send but before the row commits
+  could resend on retry. Negligible with the console backend; not worth an
+  outbox pattern here.
+
+## Frontend (Module 5)
+
+- Angular 20 standalone components, signals, lazy-loaded routes, reusable
+  services.
+- Two functional interceptors: one adds `withCredentials` + `X-CSRFToken`, one
+  routes to login on 401 (cross-origin needs the CSRF header set manually, since
+  Angular's built-in XSRF is same-origin only).
+- `provideAppInitializer` resolves the session before the first route so guards
+  are correct on refresh. Guards are usability only.
+- Custom design system (no component library); every page has loading, empty and
+  error states.
+
+## Delivery (Module 6)
+
+- Docker Compose runs db, redis, backend (gunicorn), worker (celery) and frontend
+  (nginx); the backend migrates + seeds on start. Containers use the `dev`
+  settings (cookies work over plain HTTP); `prod` settings add Secure cookies and
+  HSTS.
+- Secrets use clearly-insecure dev defaults overridable from the host env — none
+  are committed.
+- *Caveat:* Docker is not installed on the dev machine, so Compose was authored
+  and validated but not booted here. The native run path (local Postgres + Redis)
+  is fully exercised, and the cross-origin CORS/CSRF/session flow was verified
+  end-to-end.

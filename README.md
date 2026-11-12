@@ -79,6 +79,14 @@ To watch asynchronous emails, view the worker logs: `docker compose logs -f work
 
 Requires Python 3.12, Node 20, a local PostgreSQL and Redis.
 
+### 0. Start PostgreSQL and Redis
+
+```bash
+sudo service postgresql start      # or: brew services start postgresql
+sudo service redis-server start    # or: redis-server  /  brew services start redis
+redis-cli ping                     # expect: PONG
+```
+
 ### 1. Database
 
 ```bash
@@ -128,7 +136,7 @@ cd backend && source ../.venv/bin/activate
 python manage.py test
 ```
 
-**Result:** `Ran 47 tests ... OK` (last run against PostgreSQL + Redis).
+**Result:** `Ran 55 tests ... OK` (last run against PostgreSQL + Redis).
 
 Highlights (mapping to the brief's minimum test expectations):
 
