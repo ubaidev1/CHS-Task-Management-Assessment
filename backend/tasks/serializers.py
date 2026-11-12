@@ -6,7 +6,6 @@ from .models import Task
 
 
 class TaskSerializer(serializers.ModelSerializer):
-    # Read-only display names (no extra query: the view select_related()s these).
     assigned_to_username = serializers.CharField(
         source="assigned_to.username", read_only=True, allow_null=True
     )

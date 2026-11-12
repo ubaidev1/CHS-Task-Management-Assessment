@@ -1,7 +1,3 @@
-"""Shared assignment-notification helper used by both task creation and the
-explicit assign endpoint, so the notification path (event + idempotent Celery
-job, enqueued only after commit) lives in exactly one place."""
-
 from django.db import transaction
 
 from .models import AssignmentEvent

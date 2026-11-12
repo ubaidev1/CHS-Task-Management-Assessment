@@ -1,26 +1,3 @@
-"""
-Dashboard statistics with permission-scoped Redis caching.
-
-Design
-------
-Cache key embeds the user id AND the current role AND a global generation
-counter:  ``dashboard:stats:v{gen}:u{user_id}:r{role}``
-
-- **Per-user / per-role scope:** the key includes user id and role, so cached
-  data can never be served across users or roles.
-- **Permission freshness:** because the key is rebuilt from the user's *current*
-  role on every request, a role change produces a different key — the old
-  role's cached entry is never served. Revoked access takes effect immediately.
-- **Invalidation:** any task create/update/assign/delete bumps the global
-  generation (via a post-commit signal). Every cached key then references a
-  stale generation and is effectively invalidated at once, without having to
-  enumerate every affected user.
-- **Graceful degradation:** all cache access is wrapped so a Redis outage
-  returns a cache miss (never an error), and the view falls back to a
-  permission-scoped database query. We never serve data outside the requester's
-  current scope.
-"""
-
 import logging
 
 from django.core.cache import cache

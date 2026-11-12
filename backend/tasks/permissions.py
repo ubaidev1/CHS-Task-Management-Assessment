@@ -4,12 +4,8 @@ from accounts.roles import CAN_CREATE_TASKS, CAN_DELETE_TASKS, CAN_VIEW_ALL_TASK
 
 
 class TaskPermission(BasePermission):
-    """Backend-enforced RBAC for tasks (the source of truth).
-
-    Capability checks use the shared role sets in accounts/roles.py; object-level
-    checks gate access to a specific task. Employee querysets are also scoped in
-    the view, so an Employee requesting another user's task by ID gets 404, not
-    403 (no existence leak) — this object check is defense in depth.
+    """
+    Backend-enforced RBAC for tasks.
     """
 
     def has_permission(self, request, view):
