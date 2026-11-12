@@ -2,13 +2,15 @@
 
 from unittest import mock
 
+from django.core import mail
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
 from accounts.models import Role, User
-from tasks.models import Task, TaskStatus
+from tasks.models import AssignmentEvent, Task, TaskStatus
+from tasks.tasks import send_assignment_notification
 
 # Use an isolated local-memory cache for deterministic cache tests (no shared
 # Redis state); the caching *logic* is backend-agnostic.
@@ -191,3 +193,74 @@ class DashboardCacheTests(APITestCase):
             r = self.client.get(self.url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data["total_tasks"], 2)  # correct data straight from DB
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+class AssignmentNotificationTests(APITestCase):
+    def setUp(self):
+        self.manager = User.objects.create_user("mgr", "mgr@e.com", "pw", role=Role.MANAGER)
+        self.emp1 = User.objects.create_user("e1", "e1@e.com", "pw", role=Role.EMPLOYEE)
+        self.emp2 = User.objects.create_user("e2", "e2@e.com", "pw", role=Role.EMPLOYEE)
+        self.task = Task.objects.create(title="T", created_by=self.manager)
+        self.url = reverse("task-assign", args=[self.task.id])
+        mail.outbox = []
+
+    def test_employee_cannot_assign(self):
+        self.client.force_authenticate(self.emp1)
+        resp = self.client.post(self.url, {"assigned_to": self.emp2.id})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_manager_assign_saves_and_queues_notification(self):
+        self.client.force_authenticate(self.manager)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(self.url, {"assigned_to": self.emp1.id})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data["queued"])
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.assigned_to_id, self.emp1.id)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            AssignmentEvent.objects.filter(task=self.task, status="sent").count(), 1
+        )
+
+    def test_notification_queued_only_after_commit(self):
+        self.client.force_authenticate(self.manager)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(self.url, {"assigned_to": self.emp1.id})
+            self.assertEqual(len(mail.outbox), 0)  # not sent while "in transaction"
+        self.assertEqual(len(mail.outbox), 1)  # sent only after commit
+
+    def test_assign_to_same_user_is_noop(self):
+        self.task.assigned_to = self.emp1
+        self.task.save()
+        self.client.force_authenticate(self.manager)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(self.url, {"assigned_to": self.emp1.id})
+        self.assertFalse(resp.data["queued"])
+        self.assertEqual(AssignmentEvent.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reassignment_creates_new_event_and_notifies_again(self):
+        self.client.force_authenticate(self.manager)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(self.url, {"assigned_to": self.emp1.id})
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(self.url, {"assigned_to": self.emp2.id})
+        self.assertEqual(AssignmentEvent.objects.count(), 2)
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_retry_of_same_event_does_not_duplicate(self):
+        event = AssignmentEvent.objects.create(
+            task=self.task, assigned_to=self.emp1, assigned_by=self.manager
+        )
+        # Run the task twice for the same event (simulates a Celery re-delivery).
+        send_assignment_notification.apply(args=[str(event.id)])
+        send_assignment_notification.apply(args=[str(event.id)])
+        self.assertEqual(len(mail.outbox), 1)  # exactly one email
+        event.refresh_from_db()
+        self.assertEqual(event.status, AssignmentEvent.Status.SENT)
+
+    def test_invalid_assignee_is_rejected(self):
+        self.client.force_authenticate(self.manager)
+        resp = self.client.post(self.url, {"assigned_to": 999999})
+        self.assertEqual(resp.status_code, 400)

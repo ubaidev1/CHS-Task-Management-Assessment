@@ -126,6 +126,38 @@ request — fail-closed without an extra check.
 
 *Honest tradeoff:* if an invalidation is lost during a Redis outage (a brief blip where the entry survives but the generation bump fails), stale **counts** could be served until the 300s TTL expires. This never exposes *unauthorized* data (scope is in the key); it is a bounded count-staleness window, documented here.
 
+## 7. Celery assignment notifications (Module 4)
+
+**Endpoint:** `POST /api/tasks/{id}/assign/` with `{"assigned_to": <id>}` (Admin/Manager).
+
+**How an assignment event is identified & deduplicated:**
+- Each assignment to a *different* user creates an **`AssignmentEvent` row with a
+  UUID primary key**, inside the **same transaction** as the task update.
+- **Only that UUID** is passed to Celery. The worker locks the row
+  (`select_for_update`) and sends **only if `status != SENT`**, then marks it
+  SENT. A Celery re-delivery or manual retry of the same event reuses the same
+  UUID, sees SENT, and **skips** — no duplicate.
+- A genuine **reassignment** creates a **new** row (new UUID) → a new email.
+- Assigning to the **user who already holds the task is a no-op** — no event, no
+  email (documented business rule).
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| Idempotency key | Persisted `AssignmentEvent` UUID, created in the request | A key created once and stored survives retries; a timestamp generated inside the task would differ on retry and duplicate. Easier to explain than a composite key, and correctly treats A→B→A as three events. |
+| Enqueue ordering | `transaction.on_commit(lambda: task.delay(...))` | The job is queued only after the DB commits, so the worker never reads an uncommitted/rolled-back event. API returns immediately (`queued: true`). |
+| Retries | `@shared_task(bind=True, max_retries=3, default_retry_delay=10)` | Transient failures (e.g. email backend) are retried; the SENT check keeps retries idempotent. |
+| Logging | info on send/skip, warning on missing event, error+retry on failure | Useful operational trace. |
+| Email backend | Console (dev/default) | The brief accepts it to demonstrate the task runs; no SMTP creds needed. |
+
+**Workflow:** API request → assignment + event saved in PostgreSQL → transaction
+committed → `send_assignment_notification.delay(event_id)` published to the Redis
+broker → Celery worker locks the event, sends the email, marks it SENT.
+
+*Honest limitation:* if the email send succeeds but the row update is lost before
+commit (crash in a tiny window), a retry would resend. With the console backend
+this window is negligible; documented rather than solved with a heavier
+outbox-pattern, which would be over-engineering here.
+
 ---
 
 ## Assumptions (brief is silent)

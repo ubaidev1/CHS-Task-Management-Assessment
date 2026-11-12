@@ -1,4 +1,6 @@
-from rest_framework import viewsets
+from django.db import transaction
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -6,10 +8,11 @@ from rest_framework.views import APIView
 from accounts.models import Role
 from accounts.roles import CAN_VIEW_ALL_TASKS
 
-from .models import Task
+from .models import AssignmentEvent, Task
 from .permissions import TaskPermission
-from .serializers import TaskSerializer
+from .serializers import AssignSerializer, TaskSerializer
 from .stats import get_dashboard_stats
+from .tasks import send_assignment_notification
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -31,6 +34,46 @@ class TaskViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Ownership comes from the session, never the request body.
         serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def assign(self, request, pk=None):
+        """Assign a task and queue an async notification (Admin/Manager only).
+
+        The assignment and its AssignmentEvent are saved in one transaction; the
+        Celery job is enqueued only on commit, so the API returns immediately and
+        the worker never sees an uncommitted event.
+        """
+        task = self.get_object()
+        serializer = AssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_assignee = serializer.validated_data["assigned_to"]
+
+        # Documented no-op: assigning to the user who already holds the task is
+        # not a new assignment event, so no duplicate notification.
+        if task.assigned_to_id == new_assignee.id:
+            return Response(
+                {"detail": "Task is already assigned to this user.", "queued": False}
+            )
+
+        with transaction.atomic():
+            task.assigned_to = new_assignee
+            task.save()
+            event = AssignmentEvent.objects.create(
+                task=task, assigned_to=new_assignee, assigned_by=request.user
+            )
+            # Enqueue only after the transaction commits (event is then visible).
+            transaction.on_commit(
+                lambda: send_assignment_notification.delay(str(event.id))
+            )
+
+        return Response(
+            {
+                "detail": "Assignment saved; notification queued.",
+                "event_id": str(event.id),
+                "queued": True,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class DashboardStatsView(APIView):

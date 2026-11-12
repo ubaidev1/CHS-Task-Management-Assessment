@@ -32,11 +32,11 @@ from .models import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
-STATS_TTL = 300  # five minutes, per the brief
+STATS_TTL = 300  # five minutes
 _GEN_KEY = "dashboard:stats:generation"
 
 
-# --- safe cache access (never raises to the caller) ------------------------
+# safe cache access
 def _safe_cache_get(key):
     try:
         return cache.get(key)
@@ -72,7 +72,7 @@ def invalidate_stats():
         logger.warning("Failed to invalidate dashboard stats generation.", exc_info=True)
 
 
-# --- stats computation (the source of truth) -------------------------------
+# --- stats computation ---
 def _compute_stats(user):
     """Permission-scoped counts, computed from the database."""
     if user.role in CAN_VIEW_ALL_TASKS:

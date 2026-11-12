@@ -4,5 +4,6 @@ psycopg[binary]==3.3.9
 django-redis==7.0.0
 redis==8.1.0
 celery==5.7.0
+packaging==26.3
 django-cors-headers==4.9.0
 django-environ==0.14.0

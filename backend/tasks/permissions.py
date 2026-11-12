@@ -16,7 +16,8 @@ class TaskPermission(BasePermission):
         user = request.user
         if not (user and user.is_authenticated):
             return False
-        if view.action == "create":
+        if view.action in ("create", "assign"):
+            # "Create / assign tasks" -> Admin, Manager.
             return user.role in CAN_CREATE_TASKS
         if view.action == "destroy":
             return user.role in CAN_DELETE_TASKS
