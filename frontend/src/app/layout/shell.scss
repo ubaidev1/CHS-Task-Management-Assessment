@@ -1,5 +1,4 @@
 :host { display: block; }
-
 .shell { min-height: 100vh; }
 
 /* --- Sidebar ------------------------------------------------------------- */
@@ -7,37 +6,53 @@
   position: fixed;
   inset: 0 auto 0 0;
   width: var(--sidebar-w);
-  background: var(--ink-900);
-  color: #c9c7d9;
+  background:
+    radial-gradient(420px 220px at 10% -5%, rgba(124, 108, 246, 0.26), transparent 60%),
+    linear-gradient(180deg, var(--ink-900) 0%, var(--ink-950) 100%);
+  color: #c7c5d6;
   display: flex;
   flex-direction: column;
-  padding: 20px 14px;
+  padding: 22px 16px;
   z-index: 40;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 22px; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 6px 8px 24px; }
 .brand-mark {
-  width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-  background: var(--accent-grad); box-shadow: 0 6px 16px -4px rgba(123, 92, 246, 0.6);
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--accent-grad);
+  box-shadow: 0 8px 20px -6px rgba(124, 108, 246, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
-.brand-name { font-weight: 700; font-size: 1.12rem; color: #fff; letter-spacing: -0.01em; }
+.brand-name { font-weight: 800; font-size: 1.16rem; color: #fff; letter-spacing: -0.03em; }
 
-.nav { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.nav-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6a6880; font-weight: 700; padding: 4px 12px 8px; }
+.nav { display: flex; flex-direction: column; gap: 3px; }
 .nav a {
+  position: relative;
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px; border-radius: 10px; color: #b4b1c6;
-  font-weight: 550; font-size: 0.93rem; transition: background 0.14s ease, color 0.14s ease;
+  padding: 10px 13px; border-radius: 11px; color: #a6a3ba;
+  font-weight: 600; font-size: 0.92rem; letter-spacing: -0.01em;
+  transition: background 0.16s ease, color 0.16s ease;
 }
-.nav a:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
-.nav a.active { background: var(--accent); color: #fff; box-shadow: 0 6px 16px -8px var(--accent); }
+.nav a:hover { background: rgba(255, 255, 255, 0.055); color: #fff; }
+.nav a svg { opacity: 0.75; transition: opacity 0.16s ease; }
+.nav a.active {
+  color: #fff;
+  background: linear-gradient(90deg, rgba(124, 108, 246, 0.26), rgba(124, 108, 246, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(124, 108, 246, 0.3);
+}
 .nav a.active svg { opacity: 1; }
-.nav a svg { opacity: 0.8; }
+.nav a.active::before {
+  content: ''; position: absolute; left: -16px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 22px; border-radius: 0 3px 3px 0; background: var(--accent-grad);
+}
 
 .side-foot {
-  margin-top: auto; display: flex; align-items: center; gap: 8px;
-  font-size: 0.78rem; color: #7d7a92; padding: 12px 10px 4px;
+  margin-top: auto; display: flex; align-items: center; gap: 9px;
+  font-size: 0.76rem; color: #7a7891; padding: 14px 12px 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05); margin-left: -2px; margin-right: -2px;
 }
-.side-foot .dot { width: 7px; height: 7px; border-radius: 50%; background: #2bd4a0; box-shadow: 0 0 0 3px rgba(43, 212, 160, 0.18); }
+.side-foot .dot { width: 7px; height: 7px; border-radius: 50%; background: #34d9a4; box-shadow: 0 0 0 3px rgba(52, 217, 164, 0.18); }
 
 /* --- Main ---------------------------------------------------------------- */
 .main { margin-left: var(--sidebar-w); min-height: 100vh; display: flex; flex-direction: column; }
@@ -45,32 +60,32 @@
 .topbar {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; gap: 12px;
-  height: 64px; padding: 0 clamp(16px, 4vw, 40px);
-  background: rgba(245, 245, 250, 0.82);
-  backdrop-filter: saturate(140%) blur(8px);
+  height: 68px; padding: 0 clamp(18px, 4vw, 46px);
+  background: rgba(244, 242, 239, 0.72);
+  backdrop-filter: saturate(160%) blur(12px);
   border-bottom: 1px solid var(--line);
 }
-.menu-btn { display: none; background: none; border: none; color: var(--ink-800); cursor: pointer; padding: 6px; border-radius: 8px; }
-.menu-btn:hover { background: #ececf4; }
+.menu-btn { display: none; background: none; border: none; color: var(--ink-800); cursor: pointer; padding: 7px; border-radius: 9px; }
+.menu-btn:hover { background: #e9e6e1; }
 
-.user-chip { display: flex; align-items: center; gap: 10px; }
+.user-chip { display: flex; align-items: center; gap: 11px; padding: 5px 5px 5px 7px; border-radius: 999px; }
 .avatar {
-  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
   background: var(--accent-grad); color: #fff; font-weight: 700; font-size: 0.95rem;
+  box-shadow: 0 6px 14px -6px rgba(124, 108, 246, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
-.who { display: flex; flex-direction: column; line-height: 1.2; gap: 2px; }
-.who .name { font-weight: 600; font-size: 0.9rem; color: var(--ink-900); }
+.who { display: flex; flex-direction: column; line-height: 1.2; gap: 3px; }
+.who .name { font-weight: 700; font-size: 0.9rem; color: var(--ink-900); letter-spacing: -0.015em; }
 
 .content { flex: 1; }
-
 .backdrop { display: none; }
 
 /* --- Responsive ---------------------------------------------------------- */
 @media (max-width: 880px) {
-  .sidebar { transform: translateX(-100%); transition: transform 0.22s ease; box-shadow: var(--shadow-lg); }
+  .sidebar { transform: translateX(-100%); transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1); box-shadow: var(--shadow-lg); }
   .sidebar.open { transform: translateX(0); }
   .main { margin-left: 0; }
   .menu-btn { display: inline-flex; }
-  .backdrop { display: block; position: fixed; inset: 0; background: rgba(20, 19, 31, 0.4); z-index: 35; }
+  .backdrop { display: block; position: fixed; inset: 0; background: rgba(11, 11, 18, 0.46); backdrop-filter: blur(2px); z-index: 35; }
   .who .name { display: none; }
 }

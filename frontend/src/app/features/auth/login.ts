@@ -21,9 +21,9 @@ export class Login {
   readonly expired = signal(this.route.snapshot.queryParamMap.has('expired'));
 
   readonly demos = [
-    { role: 'Admin', username: 'admin', password: 'Admin@12345' },
-    { role: 'Manager', username: 'manager', password: 'Manager@12345' },
-    { role: 'Employee', username: 'employee', password: 'Employee@12345' },
+    { role: 'Admin', username: 'sophia', password: 'Admin@12345' },
+    { role: 'Manager', username: 'marcus', password: 'Manager@12345' },
+    { role: 'Employee', username: 'ethan', password: 'Employee@12345' },
   ];
 
   readonly form = this.fb.nonNullable.group({

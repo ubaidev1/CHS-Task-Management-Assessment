@@ -64,9 +64,9 @@ Sign in with a demo account (also shown on the login screen):
 
 | Role | Username | Password |
 | --- | --- | --- |
-| Admin | `admin` | `Admin@12345` |
-| Manager | `manager` | `Manager@12345` |
-| Employee | `employee` | `Employee@12345` |
+| Admin | `sophia` | `Admin@12345` |
+| Manager | `marcus` | `Manager@12345` |
+| Employee | `ethan` | `Employee@12345` |
 
 To watch asynchronous emails, view the worker logs: `docker compose logs -f worker`.
 

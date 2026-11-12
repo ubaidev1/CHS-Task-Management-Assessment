@@ -153,6 +153,14 @@ request — fail-closed without an extra check.
 committed → `send_assignment_notification.delay(event_id)` published to the Redis
 broker → Celery worker locks the event, sends the email, marks it SENT.
 
+**Assumption (extension of the brief):** the brief only names `POST /assign/` as
+the notification trigger, but **creating a task already assigned to someone is
+also an assignment**, so task creation with an `assigned_to` notifies via the
+*same* idempotent path (`queue_assignment_notification` → `AssignmentEvent` →
+Celery). Creating an unassigned task sends nothing. This removes the surprise of
+"assigned on creation but no email". The `/assign/` endpoint remains the
+canonical trigger the brief's tests target.
+
 *Honest limitation:* if the email send succeeds but the row update is lost before
 commit (crash in a tiny window), a retry would resend. With the console backend
 this window is negligible; documented rather than solved with a heavier
