@@ -264,3 +264,22 @@ class AssignmentNotificationTests(APITestCase):
         self.client.force_authenticate(self.manager)
         resp = self.client.post(self.url, {"assigned_to": 999999})
         self.assertEqual(resp.status_code, 400)
+
+    def test_creating_task_with_assignee_notifies(self):
+        """Creating a task already assigned to someone notifies them (same path)."""
+        self.client.force_authenticate(self.manager)
+        list_url = reverse("task-list")
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(list_url, {"title": "New", "assigned_to": self.emp1.id})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(AssignmentEvent.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_creating_unassigned_task_sends_no_email(self):
+        self.client.force_authenticate(self.manager)
+        list_url = reverse("task-list")
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(list_url, {"title": "Unassigned"})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(AssignmentEvent.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)

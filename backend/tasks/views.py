@@ -8,11 +8,11 @@ from rest_framework.views import APIView
 from accounts.models import Role
 from accounts.roles import CAN_VIEW_ALL_TASKS
 
-from .models import AssignmentEvent, Task
+from .models import Task
+from .notifications import queue_assignment_notification
 from .permissions import TaskPermission
 from .serializers import AssignSerializer, TaskSerializer
 from .stats import get_dashboard_stats
-from .tasks import send_assignment_notification
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -32,8 +32,13 @@ class TaskViewSet(viewsets.ModelViewSet):
         return qs.none()
 
     def perform_create(self, serializer):
-        # Ownership comes from the session, never the request body.
-        serializer.save(created_by=self.request.user)
+        # Ownership comes from the session, never the request body. If the task
+        # is created already assigned to someone, that is an assignment too, so
+        # it notifies via the same idempotent path as the /assign/ endpoint.
+        with transaction.atomic():
+            task = serializer.save(created_by=self.request.user)
+            if task.assigned_to_id:
+                queue_assignment_notification(task, task.assigned_to, self.request.user)
 
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
@@ -58,13 +63,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             task.assigned_to = new_assignee
             task.save()
-            event = AssignmentEvent.objects.create(
-                task=task, assigned_to=new_assignee, assigned_by=request.user
-            )
-            # Enqueue only after the transaction commits (event is then visible).
-            transaction.on_commit(
-                lambda: send_assignment_notification.delay(str(event.id))
-            )
+            event = queue_assignment_notification(task, new_assignee, request.user)
 
         return Response(
             {
