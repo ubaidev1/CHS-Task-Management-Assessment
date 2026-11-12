@@ -62,6 +62,15 @@ progresses, module by module.
   cannot become two separate users. *Assumption:* email is lowercased wholesale
   as the canonical identity.
 
+## 3a. Seeding demo users
+
+- **Demo users are created by a management command (`seed_users`), not a data
+  migration.** A migration runs in every environment (including prod) and would
+  bake known passwords into source control — both a secret-in-repo violation and
+  a security hole. The command is idempotent and reads passwords from env
+  (`DEMO_*`) with obvious dev-only defaults. (Role *groups* would justify a data
+  migration, but we use a `role` field, so there is nothing structural to seed.)
+
 ## 4. Authentication endpoints (Module 1)
 
 | Decision | Choice | Why |
