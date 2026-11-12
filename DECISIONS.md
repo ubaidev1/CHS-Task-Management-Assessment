@@ -48,3 +48,10 @@ Prescribed requirements are covered in the README and code.
   Angular's built-in XSRF support is same-origin only and the API is on a
   different origin (`:8000`). I kept the real cross-origin flow instead of hiding
   it behind a dev proxy.
+
+## Not implemented
+
+- **Pagination** on the task and user lists. The brief doesn't require it and
+  the demo datasets are small, so I left it out for time. For production it
+  should be added — DRF `PageNumberPagination` (e.g. 15 per page) on the list
+  endpoints, with matching page controls in the Angular list views.
