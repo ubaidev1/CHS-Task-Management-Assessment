@@ -123,6 +123,33 @@ class TaskRBACTests(APITestCase):
         self.task1.refresh_from_db()
         self.assertEqual(self.task1.assigned_to_id, self.emp1.id)  # reassign ignored
 
+    def test_employee_can_read_own_task(self):
+        self.client.force_authenticate(self.emp1)
+        resp = self.client.get(self.detail(self.task1.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["id"], self.task1.id)
+
+    def test_manager_can_edit_task_fields(self):
+        """Admin/Manager may edit more than status (unlike employees)."""
+        self.client.force_authenticate(self.manager)
+        resp = self.client.patch(
+            self.detail(self.task1.id), {"title": "Renamed", "assigned_to": self.emp2.id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.task1.refresh_from_db()
+        self.assertEqual(self.task1.title, "Renamed")
+        self.assertEqual(self.task1.assigned_to_id, self.emp2.id)
+
+    def test_invalid_status_is_rejected(self):
+        self.client.force_authenticate(self.emp1)
+        resp = self.client.patch(self.detail(self.task1.id), {"status": "archived"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_requires_title(self):
+        self.client.force_authenticate(self.manager)
+        resp = self.client.post(self.list_url, {"description": "no title"})
+        self.assertEqual(resp.status_code, 400)
+
 
 @override_settings(CACHES=LOCMEM)
 class DashboardCacheTests(APITestCase):
@@ -264,6 +291,19 @@ class AssignmentNotificationTests(APITestCase):
         self.client.force_authenticate(self.manager)
         resp = self.client.post(self.url, {"assigned_to": 999999})
         self.assertEqual(resp.status_code, 400)
+
+    def test_send_failure_leaves_event_unsent_for_retry(self):
+        """A transient email failure must NOT mark the event sent (so a retry
+        actually resends, and idempotency never wrongly skips it)."""
+        event = AssignmentEvent.objects.create(
+            task=self.task, assigned_to=self.emp1, assigned_by=self.manager
+        )
+        with mock.patch("tasks.tasks.send_mail", side_effect=Exception("smtp down")):
+            with self.assertRaises(Exception):
+                send_assignment_notification.apply(args=[str(event.id)], throw=True)
+        event.refresh_from_db()
+        self.assertEqual(event.status, AssignmentEvent.Status.PENDING)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_creating_task_with_assignee_notifies(self):
         """Creating a task already assigned to someone notifies them (same path)."""

@@ -88,6 +88,12 @@ class AuthEndpointTests(APITestCase):
         self.assertFalse(resp.data["authenticated"])
         self.assertIn("csrftoken", resp.cookies)
 
+    def test_session_endpoint_reports_authenticated_user(self):
+        self.client.login(username="alice", password=self.password)
+        resp = self.client.get(self.session_url)
+        self.assertTrue(resp.data["authenticated"])
+        self.assertEqual(resp.data["user"]["username"], "alice")
+
     def test_login_without_csrf_token_is_rejected(self):
         csrf_client = APIClient(enforce_csrf_checks=True)
         resp = csrf_client.post(
