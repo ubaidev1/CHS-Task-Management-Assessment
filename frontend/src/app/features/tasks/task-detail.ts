@@ -4,7 +4,9 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth.service';
+import { ConfirmService } from '../../core/confirm.service';
 import { STATUS_LABELS, Task, TaskStatus, User } from '../../core/models';
+import { NotificationService } from '../../core/notification.service';
 import { TaskService } from '../../core/task.service';
 import { UserService } from '../../core/user.service';
 
@@ -20,6 +22,8 @@ export class TaskDetail implements OnInit {
   private auth = inject(AuthService);
   private fb = inject(FormBuilder);
   private router = inject(Router);
+  private notify = inject(NotificationService);
+  private confirm = inject(ConfirmService);
 
   /** Bound from the :id route param via withComponentInputBinding(). */
   readonly id = input.required<string>();
@@ -29,8 +33,7 @@ export class TaskDetail implements OnInit {
 
   readonly loading = signal(true);
   readonly notFound = signal(false);
-  readonly error = signal<string | null>(null);
-  readonly success = signal<string | null>(null);
+  readonly loadError = signal(false);
   readonly saving = signal(false);
   readonly task = signal<Task | null>(null);
   readonly users = signal<User[]>([]);
@@ -58,7 +61,7 @@ export class TaskDetail implements OnInit {
 
   load(): void {
     this.loading.set(true);
-    this.error.set(null);
+    this.loadError.set(false);
     this.notFound.set(false);
     this.taskService.get(Number(this.id())).subscribe({
       next: (t) => {
@@ -70,7 +73,7 @@ export class TaskDetail implements OnInit {
       error: (e) => {
         this.loading.set(false);
         if (e.status === 404) this.notFound.set(true);
-        else this.error.set('Could not load this task.');
+        else this.loadError.set(true);
       },
     });
   }
@@ -78,13 +81,12 @@ export class TaskDetail implements OnInit {
   changeStatus(status: TaskStatus): void {
     const t = this.task();
     if (!t || t.status === status) return;
-    this.clearBanners();
     this.saving.set(true);
     this.taskService.updateStatus(t.id, status).subscribe({
       next: (updated) => {
         this.task.set(updated);
         this.saving.set(false);
-        this.success.set('Status updated.');
+        this.notify.success(`Status changed to “${this.statusLabels[status]}”.`);
       },
       error: () => this.fail('Could not update the status.'),
     });
@@ -96,13 +98,12 @@ export class TaskDetail implements OnInit {
       this.editForm.markAllAsTouched();
       return;
     }
-    this.clearBanners();
     this.saving.set(true);
     this.taskService.update(t.id, this.editForm.getRawValue()).subscribe({
       next: (updated) => {
         this.task.set(updated);
         this.saving.set(false);
-        this.success.set('Task details saved.');
+        this.notify.success('Task details saved.');
       },
       error: () => this.fail('Could not save changes.'),
     });
@@ -112,12 +113,11 @@ export class TaskDetail implements OnInit {
     const t = this.task();
     const to = this.assignCtrl.value;
     if (!t || to == null) return;
-    this.clearBanners();
     this.saving.set(true);
     this.taskService.assign(t.id, to).subscribe({
       next: (res) => {
         this.saving.set(false);
-        this.success.set(
+        this.notify.success(
           res.queued ? 'Reassigned — a notification has been queued.' : res.detail,
         );
         this.load();
@@ -126,24 +126,28 @@ export class TaskDetail implements OnInit {
     });
   }
 
-  remove(): void {
+  async remove(): Promise<void> {
     const t = this.task();
-    if (!t || !confirm(`Delete task "${t.title}"? This cannot be undone.`)) return;
-    this.clearBanners();
+    if (!t) return;
+    const ok = await this.confirm.ask({
+      title: 'Delete task',
+      message: `“${t.title}” will be permanently deleted. This cannot be undone.`,
+      confirmText: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     this.saving.set(true);
     this.taskService.remove(t.id).subscribe({
-      next: () => this.router.navigate(['/tasks']),
+      next: () => {
+        this.notify.success('Task deleted.');
+        this.router.navigate(['/tasks']);
+      },
       error: () => this.fail('Could not delete the task.'),
     });
   }
 
-  private clearBanners(): void {
-    this.success.set(null);
-    this.error.set(null);
-  }
-
   private fail(msg: string): void {
     this.saving.set(false);
-    this.error.set(msg);
+    this.notify.error(msg);
   }
 }

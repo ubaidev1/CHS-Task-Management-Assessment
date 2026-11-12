@@ -2,7 +2,7 @@
   <div class="page-head">
     <div>
       <h1 class="page-title">
-        @if (user(); as u) { Hello, {{ u.username }} 👋 } @else { Dashboard }
+        @if (user(); as u) { Hello, {{ u.username }} } @else { Dashboard }
       </h1>
       <p class="page-sub">{{ scopeNote() }}</p>
     </div>
@@ -10,48 +10,49 @@
   </div>
 
   @if (loading()) {
-    <div class="stat-grid">
-      @for (i of [1,2,3,4]; track i) {
-        <div class="card card-pad stat">
-          <div class="skeleton" style="height:14px;width:60%"></div>
-          <div class="skeleton" style="height:34px;width:40%;margin-top:14px"></div>
-        </div>
-      }
-    </div>
+    <div class="card"><div class="skeleton" style="height:220px;border-radius:14px"></div></div>
   } @else if (error()) {
     <div class="card card-pad">
       <div class="alert alert-error">{{ error() }}</div>
       <button class="btn btn-ghost" style="margin-top:14px" (click)="load()">Retry</button>
     </div>
   } @else if (stats(); as s) {
-    <div class="stat-grid">
-      <div class="card card-pad stat">
-        <div class="stat-top"><span class="stat-ico ico-total">▦</span><span class="stat-label">Total tasks</span></div>
-        <div class="stat-num mono">{{ s.total_tasks }}</div>
-      </div>
-      <div class="card card-pad stat">
-        <div class="stat-top"><span class="stat-ico ico-done">✓</span><span class="stat-label">Completed</span></div>
-        <div class="stat-num mono">{{ s.completed_tasks }}</div>
-      </div>
-      <div class="card card-pad stat">
-        <div class="stat-top"><span class="stat-ico ico-pending">◷</span><span class="stat-label">Pending</span></div>
-        <div class="stat-num mono">{{ s.pending_tasks }}</div>
-      </div>
-      <div class="card card-pad stat">
-        <div class="stat-top"><span class="stat-ico ico-mine">★</span><span class="stat-label">My tasks</span></div>
-        <div class="stat-num mono">{{ s.my_tasks }}</div>
-      </div>
-    </div>
-
-    <div class="card card-pad progress-card">
-      <div class="row" style="justify-content:space-between">
-        <div>
-          <h3>Completion rate</h3>
-          <p class="page-sub">{{ s.completed_tasks }} of {{ s.total_tasks }} tasks completed</p>
+    <div class="card overview">
+      <!-- Completion ring -->
+      <div class="ring-side">
+        <div class="ring">
+          <svg viewBox="0 0 128 128">
+            <circle class="ring-track" cx="64" cy="64" r="54" />
+            <circle class="ring-prog" cx="64" cy="64" r="54"
+              [attr.stroke-dasharray]="RING_C" [attr.stroke-dashoffset]="ringOffset()" />
+          </svg>
+          <div class="ring-center">
+            <span class="ring-pct mono">{{ completion() }}%</span>
+            <span class="ring-lbl">completed</span>
+          </div>
         </div>
-        <div class="progress-pct mono">{{ completion() }}%</div>
+        <p class="ring-caption">{{ s.completed_tasks }} of {{ s.total_tasks }} tasks done</p>
       </div>
-      <div class="bar"><div class="bar-fill" [style.width.%]="completion()"></div></div>
+
+      <!-- Metric grid -->
+      <div class="metrics">
+        <div class="metric">
+          <span class="m-num mono">{{ s.total_tasks }}</span>
+          <span class="m-lbl">Total tasks</span>
+        </div>
+        <div class="metric">
+          <span class="m-num mono">{{ s.completed_tasks }}</span>
+          <span class="m-lbl">Completed</span>
+        </div>
+        <div class="metric">
+          <span class="m-num mono">{{ s.pending_tasks }}</span>
+          <span class="m-lbl">Pending</span>
+        </div>
+        <div class="metric">
+          <span class="m-num mono">{{ s.my_tasks }}</span>
+          <span class="m-lbl">Assigned to me</span>
+        </div>
+      </div>
     </div>
   }
 </div>

@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { AuthService } from '../../core/auth.service';
 import { ROLE_LABELS, Role, User } from '../../core/models';
+import { NotificationService } from '../../core/notification.service';
 import { UserService } from '../../core/user.service';
 
 @Component({
@@ -15,6 +16,7 @@ export class UserList implements OnInit {
   private userService = inject(UserService);
   private auth = inject(AuthService);
   private fb = inject(FormBuilder);
+  private notify = inject(NotificationService);
 
   readonly roleLabels = ROLE_LABELS;
   readonly roles: Role[] = ['employee', 'manager', 'admin'];
@@ -78,6 +80,7 @@ export class UserList implements OnInit {
         this.saving.set(false);
         this.showForm.set(false);
         this.form.reset({ username: '', email: '', role: 'employee', password: '' });
+        this.notify.success(`User “${created.username}” created.`);
       },
       error: (e) => {
         this.saving.set(false);

@@ -203,7 +203,7 @@ Assigning a task creates an `AssignmentEvent` row (UUID PK) in the same
 transaction; only that UUID is enqueued (after commit). The worker sends the
 email under a row lock and only if the event isn't already `sent`, so a retry
 never duplicates, while a genuine reassignment is a new event. Assigning to the
-current assignee is a no-op. See `backend/tasks/tasks.py` and `DECISIONS.md §7`.
+current assignee is a no-op. See `backend/tasks/tasks.py` and `DECISIONS.md`.
 
 ---
 
@@ -233,4 +233,3 @@ DECISIONS.md           # assumptions + engineering decisions
   admin UI is not a deliverable); the JSON API and the Angular app are the
   primary surfaces.
 - Full assumptions and trade-offs are documented in [`DECISIONS.md`](./DECISIONS.md).
-```

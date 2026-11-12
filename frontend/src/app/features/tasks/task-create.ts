@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { STATUS_LABELS, TaskStatus, User } from '../../core/models';
+import { NotificationService } from '../../core/notification.service';
 import { TaskService } from '../../core/task.service';
 import { UserService } from '../../core/user.service';
 
@@ -17,6 +18,7 @@ export class TaskCreate implements OnInit {
   private userService = inject(UserService);
   private fb = inject(FormBuilder);
   private router = inject(Router);
+  private notify = inject(NotificationService);
 
   readonly statusLabels = STATUS_LABELS;
   readonly statuses: TaskStatus[] = ['pending', 'in_progress', 'completed'];
@@ -58,7 +60,14 @@ export class TaskCreate implements OnInit {
       ...(v.assigned_to != null ? { assigned_to: v.assigned_to } : {}),
     };
     this.taskService.create(payload).subscribe({
-      next: (task) => this.router.navigate(['/tasks', task.id]),
+      next: (task) => {
+        this.notify.success(
+          payload.assigned_to
+            ? 'Task created and assigned — a notification has been queued.'
+            : 'Task created.',
+        );
+        this.router.navigate(['/tasks', task.id]);
+      },
       error: () => {
         this.saving.set(false);
         this.error.set('Could not create the task. Please try again.');

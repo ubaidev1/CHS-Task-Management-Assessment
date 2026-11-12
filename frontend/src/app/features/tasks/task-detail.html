@@ -12,15 +12,12 @@
         <a routerLink="/tasks" class="btn btn-ghost">Back to tasks</a>
       </div>
     </div>
-  } @else if (error() && !task()) {
+  } @else if (loadError()) {
     <div class="card card-pad">
-      <div class="alert alert-error">{{ error() }}</div>
+      <div class="alert alert-error">Could not load this task.</div>
       <button class="btn btn-ghost" style="margin-top:14px" (click)="load()">Retry</button>
     </div>
   } @else if (task(); as t) {
-    @if (success()) { <div class="alert alert-success banner">{{ success() }}</div> }
-    @if (error()) { <div class="alert alert-error banner">{{ error() }}</div> }
-
     <div class="detail-grid">
       <!-- Main -->
       <div class="stack">

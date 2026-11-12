@@ -27,6 +27,10 @@ export class Dashboard implements OnInit {
     return Math.round((s.completed_tasks / s.total_tasks) * 100);
   });
 
+  /** SVG progress ring geometry (r = 54). */
+  readonly RING_C = 2 * Math.PI * 54;
+  readonly ringOffset = computed(() => this.RING_C * (1 - this.completion() / 100));
+
   readonly scopeNote = computed(() =>
     this.auth.hasRole('admin', 'manager')
       ? 'Showing statistics across all tasks.'

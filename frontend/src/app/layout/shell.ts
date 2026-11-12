@@ -3,10 +3,12 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 
 import { AuthService } from '../core/auth.service';
 import { ROLE_LABELS } from '../core/models';
+import { ConfirmDialog } from '../shared/confirm-dialog';
+import { Toasts } from '../shared/toasts';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, Toasts, ConfirmDialog],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
 })
