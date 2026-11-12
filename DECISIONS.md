@@ -175,6 +175,22 @@ outbox-pattern, which would be over-engineering here.
 - Field-level UI mirrors the backend: Employees only see a status control on their
   own tasks; managers/admins get full edit + reassign; only admins see delete.
 
+## 9. Delivery: Docker, docs (Module 6)
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| Containers | Compose with db, redis, backend (gunicorn), worker (celery), frontend (nginx) | One command brings up the whole stack; backend runs migrate + seed on start. |
+| Settings in containers | `dev` settings module | Cookies work over plain HTTP in the demo; `prod` settings enable Secure cookies/HSTS for real HTTPS. |
+| Secrets | Insecure dev defaults overridable from host env (`${DJANGO_SECRET_KEY:-…}`) | No real secret is committed; graders can run without extra setup. |
+| Frontend serving | Multi-stage build → static files via nginx with SPA fallback | Small production image; deep links work. |
+| Admin static | Not collected in the gunicorn image | The Django admin UI is not a deliverable; the JSON API + Angular app are the surfaces. |
+
+*Honest caveat:* Docker is not installed on the development machine, so the
+Compose stack was authored and validated (YAML + build output paths) but not
+run here. The **native** run path (local Postgres 17 + Redis 7) is fully
+exercised, and the cross-origin CORS/CSRF/session flow was verified end-to-end
+with real HTTP requests.
+
 ---
 
 ## Assumptions (brief is silent)
