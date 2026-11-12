@@ -91,6 +91,8 @@ request → Django validates header against cookie. Session cookie stays HttpOnl
 | --- | --- | --- |
 | View style | `ModelViewSet` + router for tasks/users | Standard CRUD maps cleanly to a ViewSet and DRF's object-level permission hooks; contrast with the auth APIViews, which are actions, not resources. |
 | Permission enforcement | Reusable `BasePermission` classes (`TaskPermission`, `UserManagementPermission`) | `has_permission` gates the action by role; `has_object_permission` gates the specific object — backend is the source of truth. |
+| Role rules location | Named role sets in `accounts/roles.py`, referenced by permissions, querysets and the dashboard | **Permission rules are defined once as named role sets; changing who can do something means editing one constant, not hunting through the code.** Sets (not functions) were chosen because the role→action matrix is a fixed, declarative table — the whole policy reads in one screen and maps 1:1 to the brief's matrix. Runtime-editable permissions (Django Groups/Permissions) were not used because the matrix is fixed by the brief, so a static, auditable mapping is simpler and safer. Object-ownership stays a separate layer. |
+| Fail-closed querysets | `get_queryset` returns `Task.objects.none()` for any role outside the known set | An unknown/unset role sees nothing, never everything. |
 | Employee task visibility | Queryset scoped in `get_queryset` | Employees' queryset is `assigned_to=self`, so cross-user access by ID returns **404, not 403** (no existence leak). Object permission is defense in depth. |
 | Field-level limit | Employee serializer makes every field except `status` read-only | Enforces "Employee updates only status" server-side; extra payload keys are ignored, not applied. |
 | Ownership | `created_by` set in `perform_create` from `request.user`; read-only in serializer | A client cannot spoof ownership via the payload (tested). |
@@ -109,6 +111,20 @@ per-row query); `select_related` is added as defensive belt-and-suspenders.
 *Inactive users:* DRF `SessionAuthentication` rejects users with `is_active=False`
 (returns `None`), so a deactivated user's live session is denied on the next
 request — fail-closed without an extra check.
+
+## 6. Dashboard caching (Module 3)
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| Cache key | `dashboard:stats:v{gen}:u{user_id}:r{role}` | User id + role in the key guarantees no cross-user/role leakage; rebuilding the key from the *current* role each request means a role change instantly produces a different key (old entry never served). |
+| Invalidation | Global **generation counter** bumped on any task change | Admin/Manager stats cover all tasks, so any change affects many dashboards; bumping one counter supersedes every cached entry without enumerating users. TTL (300s) is the backstop. |
+| When to invalidate | `post_save`/`post_delete` signal → `transaction.on_commit` | Invalidate only after the change commits, so a concurrent request can't cache pre-commit state under the new generation. |
+| Graceful degradation | Every cache call wrapped in try/except returning a miss | A Redis outage yields a cache miss, and the view falls back to a permission-scoped DB query — correct data, never an error, never out-of-scope. Independent of `IGNORE_EXCEPTIONS` (belt-and-suspenders). |
+| Compute cost | One aggregate (total + completed) + one `my_tasks` count | Two queries regardless of task count; `pending = total − completed` avoids a third. |
+
+*Permission freshness:* authorization is re-evaluated every request (IsAuthenticated + role-in-key), so revoked access takes effect immediately; cached data for an old role is unreachable.
+
+*Honest tradeoff:* if an invalidation is lost during a Redis outage (a brief blip where the entry survives but the generation bump fails), stale **counts** could be served until the 300s TTL expires. This never exposes *unauthorized* data (scope is in the key); it is a bounded count-staleness window, documented here.
 
 ---
 

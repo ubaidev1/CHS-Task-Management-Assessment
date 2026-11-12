@@ -1,10 +1,23 @@
 """RBAC and object-level authorization tests for tasks."""
 
+from unittest import mock
+
+from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
 from accounts.models import Role, User
 from tasks.models import Task, TaskStatus
+
+# Use an isolated local-memory cache for deterministic cache tests (no shared
+# Redis state); the caching *logic* is backend-agnostic.
+LOCMEM = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "dashboard-tests",
+    }
+}
 
 
 class TaskRBACTests(APITestCase):
@@ -107,3 +120,74 @@ class TaskRBACTests(APITestCase):
         self.client.patch(self.detail(self.task1.id), {"assigned_to": self.emp2.id})
         self.task1.refresh_from_db()
         self.assertEqual(self.task1.assigned_to_id, self.emp1.id)  # reassign ignored
+
+
+@override_settings(CACHES=LOCMEM)
+class DashboardCacheTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.admin = User.objects.create_user("a", "a@e.com", "pw", role=Role.ADMIN)
+        self.emp = User.objects.create_user("e", "e@e.com", "pw", role=Role.EMPLOYEE)
+        self.emp2 = User.objects.create_user("e2", "e2@e.com", "pw", role=Role.EMPLOYEE)
+        Task.objects.create(title="t1", assigned_to=self.emp, created_by=self.admin,
+                            status=TaskStatus.PENDING)
+        Task.objects.create(title="t2", assigned_to=self.emp, created_by=self.admin,
+                            status=TaskStatus.COMPLETED)
+        Task.objects.create(title="t3", assigned_to=self.emp2, created_by=self.admin,
+                            status=TaskStatus.PENDING)
+        self.url = reverse("dashboard-stats")
+
+    # --- scope -----------------------------------------------------------
+    def test_admin_sees_all_tasks_scope(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data, {"total_tasks": 3, "completed_tasks": 1,
+                                  "pending_tasks": 2, "my_tasks": 0})
+
+    def test_employee_sees_only_own_scope(self):
+        self.client.force_authenticate(self.emp)
+        r = self.client.get(self.url)
+        # For an employee total == my_tasks (same assigned-task scope).
+        self.assertEqual(r.data, {"total_tasks": 2, "completed_tasks": 1,
+                                  "pending_tasks": 1, "my_tasks": 2})
+
+    def test_anonymous_is_denied(self):
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    # --- caching behaviour ----------------------------------------------
+    def test_repeated_request_uses_cache(self):
+        self.client.force_authenticate(self.emp)
+        self.client.get(self.url)  # populate cache
+        with self.assertNumQueries(0):  # second request hits cache, no DB
+            self.client.get(self.url)
+
+    def test_cache_invalidated_on_task_change(self):
+        self.client.force_authenticate(self.emp)
+        self.assertEqual(self.client.get(self.url).data["total_tasks"], 2)
+        # captureOnCommitCallbacks runs the post-commit invalidation signal.
+        with self.captureOnCommitCallbacks(execute=True):
+            Task.objects.create(title="t4", assigned_to=self.emp, created_by=self.admin)
+        self.assertEqual(self.client.get(self.url).data["total_tasks"], 3)
+
+    def test_cache_is_isolated_per_user(self):
+        self.client.force_authenticate(self.emp)
+        self.assertEqual(self.client.get(self.url).data["total_tasks"], 2)
+        self.client.force_authenticate(self.emp2)
+        self.assertEqual(self.client.get(self.url).data["total_tasks"], 1)
+
+    def test_role_change_takes_effect_immediately(self):
+        self.client.force_authenticate(self.emp)
+        self.assertEqual(self.client.get(self.url).data["total_tasks"], 2)  # employee scope
+        self.emp.role = Role.MANAGER
+        self.emp.save()
+        # New role -> new cache key -> recompute with manager (all-tasks) scope.
+        self.assertEqual(self.client.get(self.url).data["total_tasks"], 3)
+
+    def test_redis_outage_falls_back_to_db(self):
+        self.client.force_authenticate(self.emp)
+        with mock.patch("tasks.stats.cache.get", side_effect=Exception("redis down")), \
+             mock.patch("tasks.stats.cache.set", side_effect=Exception("redis down")):
+            r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["total_tasks"], 2)  # correct data straight from DB

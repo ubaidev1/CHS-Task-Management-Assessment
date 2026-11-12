@@ -1,6 +1,6 @@
 from rest_framework.permissions import BasePermission
 
-from .models import Role
+from .roles import CAN_MANAGE_USERS, CAN_VIEW_USERS
 
 
 class UserManagementPermission(BasePermission):
@@ -11,6 +11,6 @@ class UserManagementPermission(BasePermission):
         if not (user and user.is_authenticated):
             return False
         if view.action in ("list", "retrieve"):
-            return user.role in (Role.ADMIN, Role.MANAGER)
+            return user.role in CAN_VIEW_USERS
         # create / update / partial_update / destroy -> Admin only.
-        return user.role == Role.ADMIN
+        return user.role in CAN_MANAGE_USERS
