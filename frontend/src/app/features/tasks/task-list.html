@@ -1,0 +1,73 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Tasks</h1>
+      <p class="page-sub">
+        @if (canManage()) { All tasks across the workspace } @else { Tasks assigned to you }
+      </p>
+    </div>
+    @if (canManage()) {
+      <a routerLink="/tasks/new" class="btn btn-primary">+ New task</a>
+    }
+  </div>
+
+  <div class="filters">
+    @for (f of filters; track f.key) {
+      <button class="chip" [class.active]="filter() === f.key" (click)="filter.set(f.key)">
+        {{ f.label }} <span class="chip-count">{{ countFor(f.key) }}</span>
+      </button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="task-grid">
+      @for (i of [1,2,3,4]; track i) {
+        <div class="card card-pad">
+          <div class="skeleton" style="height:16px;width:70%"></div>
+          <div class="skeleton" style="height:12px;width:40%;margin-top:12px"></div>
+          <div class="skeleton" style="height:22px;width:30%;margin-top:18px"></div>
+        </div>
+      }
+    </div>
+  } @else if (error()) {
+    <div class="card card-pad">
+      <div class="alert alert-error">{{ error() }}</div>
+      <button class="btn btn-ghost" style="margin-top:14px" (click)="load()">Retry</button>
+    </div>
+  } @else if (filtered().length === 0) {
+    <div class="card">
+      <div class="state">
+        <div class="empty-ico">🗂️</div>
+        <h3>No tasks here</h3>
+        <p class="muted">
+          @if (filter() !== 'all') { No tasks match this filter. }
+          @else if (canManage()) { Create your first task to get started. }
+          @else { You have no tasks assigned yet. }
+        </p>
+        @if (canManage() && filter() === 'all') {
+          <a routerLink="/tasks/new" class="btn btn-primary">+ New task</a>
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="task-grid">
+      @for (t of filtered(); track t.id) {
+        <a class="card card-pad task-card" [routerLink]="['/tasks', t.id]">
+          <div class="task-top">
+            <span class="pill pill-{{ t.status }}">{{ statusLabels[t.status] }}</span>
+            <span class="task-id mono">#{{ t.id }}</span>
+          </div>
+          <h3 class="task-title">{{ t.title }}</h3>
+          @if (t.description) { <p class="task-desc">{{ t.description }}</p> }
+          <div class="task-foot">
+            <span class="assignee">
+              <span class="mini-avatar">{{ (t.assigned_to_username || '–').charAt(0).toUpperCase() }}</span>
+              {{ t.assigned_to_username || 'Unassigned' }}
+            </span>
+            <span class="muted small">{{ t.created_at | date: 'MMM d' }}</span>
+          </div>
+        </a>
+      }
+    </div>
+  }
+</div>

@@ -1,0 +1,69 @@
+<div class="auth">
+  <!-- Brand panel -->
+  <section class="brand-panel">
+    <div class="brand-row">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+          <path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+      <span class="brand-name">TaskFlow</span>
+    </div>
+    <h1 class="tagline">Assign work.<br />Track progress.<br />Stay in control.</h1>
+    <p class="blurb">
+      A role-aware task workspace. Every action you see here is independently
+      enforced by the backend — the UI simply reflects what you are allowed to do.
+    </p>
+    <div class="brand-foot">
+      <span class="pill-dot"></span> Secure session authentication
+    </div>
+  </section>
+
+  <!-- Form panel -->
+  <section class="form-panel">
+    <div class="form-card">
+      <h2>Welcome back</h2>
+      <p class="sub">Sign in to your workspace</p>
+
+      @if (expired()) {
+        <div class="alert alert-error">Your session expired. Please sign in again.</div>
+      }
+      @if (error()) {
+        <div class="alert alert-error">{{ error() }}</div>
+      }
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="field">
+          <label class="label" for="username">Username</label>
+          <input id="username" class="input" formControlName="username" autocomplete="username"
+                 [class.invalid]="invalid('username')" placeholder="e.g. admin" />
+          @if (invalid('username')) { <span class="error-text">Username is required.</span> }
+        </div>
+
+        <div class="field">
+          <label class="label" for="password">Password</label>
+          <input id="password" type="password" class="input" formControlName="password"
+                 autocomplete="current-password" [class.invalid]="invalid('password')" placeholder="••••••••" />
+          @if (invalid('password')) { <span class="error-text">Password is required.</span> }
+        </div>
+
+        <button class="btn btn-primary btn-block" type="submit" [disabled]="loading()">
+          @if (loading()) { <span class="spinner" style="--accent-soft: rgba(255,255,255,.4)"></span> Signing in… }
+          @else { Sign in }
+        </button>
+      </form>
+
+      <div class="demo">
+        <span class="demo-title">Demo accounts — click to fill</span>
+        <div class="demo-grid">
+          @for (d of demos; track d.username) {
+            <button type="button" class="demo-chip" (click)="fill(d.username, d.password)">
+              <span class="badge badge-{{ d.role.toLowerCase() }}">{{ d.role }}</span>
+              <span class="demo-user">{{ d.username }}</span>
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  </section>
+</div>

@@ -1,0 +1,86 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Users</h1>
+      <p class="page-sub">
+        @if (isAdmin()) { View the team and create new accounts }
+        @else { View the team — only admins can create users }
+      </p>
+    </div>
+    @if (isAdmin()) {
+      <button class="btn btn-primary" (click)="toggleForm()">
+        {{ showForm() ? 'Close' : '+ Add user' }}
+      </button>
+    }
+  </div>
+
+  @if (isAdmin() && showForm()) {
+    <div class="card card-pad create-card">
+      <h3 style="margin-bottom:16px">Create a user</h3>
+      @if (createError()) { <div class="alert alert-error" style="margin-bottom:16px">{{ createError() }}</div> }
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="form-cols">
+          <div class="field">
+            <label class="label">Username</label>
+            <input class="input" formControlName="username" [class.invalid]="invalid('username')" />
+            @if (invalid('username')) { <span class="error-text">Username is required.</span> }
+          </div>
+          <div class="field">
+            <label class="label">Email</label>
+            <input class="input" type="email" formControlName="email" [class.invalid]="invalid('email')" />
+            @if (invalid('email')) { <span class="error-text">A valid email is required.</span> }
+          </div>
+          <div class="field">
+            <label class="label">Role</label>
+            <select class="select" formControlName="role">
+              @for (r of roles; track r) { <option [value]="r">{{ roleLabels[r] }}</option> }
+            </select>
+          </div>
+          <div class="field">
+            <label class="label">Temporary password</label>
+            <input class="input" type="password" formControlName="password" [class.invalid]="invalid('password')" />
+            @if (invalid('password')) { <span class="error-text">At least 8 characters.</span> }
+            @else { <span class="hint">The backend also enforces its password rules.</span> }
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit" [disabled]="saving()">
+          @if (saving()) { <span class="spinner" style="border-top-color:#fff"></span> Creating… }
+          @else { Create user }
+        </button>
+      </form>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="card card-pad"><div class="row"><span class="spinner"></span> <span class="muted">Loading users…</span></div></div>
+  } @else if (error()) {
+    <div class="card card-pad">
+      <div class="alert alert-error">{{ error() }}</div>
+      <button class="btn btn-ghost" style="margin-top:14px" (click)="load()">Retry</button>
+    </div>
+  } @else if (users().length === 0) {
+    <div class="card"><div class="state"><div class="empty-ico">👥</div><h3>No users yet</h3></div></div>
+  } @else {
+    <div class="card user-table">
+      <table class="table">
+        <thead>
+          <tr><th>User</th><th>Email</th><th>Role</th></tr>
+        </thead>
+        <tbody>
+          @for (u of users(); track u.id) {
+            <tr>
+              <td>
+                <div class="user-cell">
+                  <span class="avatar-sm">{{ u.username.charAt(0).toUpperCase() }}</span>
+                  <span class="uname">{{ u.username }}</span>
+                </div>
+              </td>
+              <td class="muted">{{ u.email }}</td>
+              <td><span class="badge badge-{{ u.role }}">{{ roleLabels[u.role] }}</span></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

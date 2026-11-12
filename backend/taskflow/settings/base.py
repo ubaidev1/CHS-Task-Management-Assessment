@@ -157,7 +157,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 #   opts out (fail-closed). Login is the one documented exception.
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        # Custom: returns 401 for unauthenticated (vs DRF's default 403), so the
+        # frontend can distinguish "not logged in" from "forbidden".
+        "accounts.authentication.SessionAuthentication401",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

@@ -1,0 +1,117 @@
+<div class="page">
+  <a routerLink="/tasks" class="back">← Back to tasks</a>
+
+  @if (loading()) {
+    <div class="card card-pad"><div class="row"><span class="spinner spinner-lg"></span> <span class="muted">Loading task…</span></div></div>
+  } @else if (notFound()) {
+    <div class="card">
+      <div class="state">
+        <div class="empty-ico">🔒</div>
+        <h3>Task not available</h3>
+        <p class="muted">It doesn’t exist, or you don’t have access to it.</p>
+        <a routerLink="/tasks" class="btn btn-ghost">Back to tasks</a>
+      </div>
+    </div>
+  } @else if (error() && !task()) {
+    <div class="card card-pad">
+      <div class="alert alert-error">{{ error() }}</div>
+      <button class="btn btn-ghost" style="margin-top:14px" (click)="load()">Retry</button>
+    </div>
+  } @else if (task(); as t) {
+    @if (success()) { <div class="alert alert-success banner">{{ success() }}</div> }
+    @if (error()) { <div class="alert alert-error banner">{{ error() }}</div> }
+
+    <div class="detail-grid">
+      <!-- Main -->
+      <div class="stack">
+        <div class="card card-pad">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <span class="pill pill-{{ t.status }}">{{ statusLabels[t.status] }}</span>
+            <span class="task-id mono">Task #{{ t.id }}</span>
+          </div>
+
+          @if (canManage()) {
+            <form [formGroup]="editForm" (ngSubmit)="saveDetails()" class="edit-form">
+              <div class="field">
+                <label class="label" for="title">Title</label>
+                <input id="title" class="input" formControlName="title"
+                       [class.invalid]="editForm.get('title')?.invalid && editForm.get('title')?.touched" />
+                @if (editForm.get('title')?.invalid && editForm.get('title')?.touched) {
+                  <span class="error-text">Title is required.</span>
+                }
+              </div>
+              <div class="field">
+                <label class="label" for="desc">Description</label>
+                <textarea id="desc" class="textarea" formControlName="description" placeholder="Add details…"></textarea>
+              </div>
+              <button class="btn btn-primary" type="submit" [disabled]="saving()">Save changes</button>
+            </form>
+          } @else {
+            <h2 class="view-title">{{ t.title }}</h2>
+            <p class="view-desc">{{ t.description || 'No description provided.' }}</p>
+          }
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="stack">
+        <!-- Status -->
+        <div class="card card-pad">
+          <h3 class="side-title">Status</h3>
+          @if (canChangeStatus()) {
+            <div class="status-opts">
+              @for (s of statuses; track s) {
+                <button class="status-opt" [class.sel]="t.status === s" [disabled]="saving()"
+                        (click)="changeStatus(s)">
+                  <span class="pill pill-{{ s }}">{{ statusLabels[s] }}</span>
+                </button>
+              }
+            </div>
+            <p class="hint">Updating status is saved immediately.</p>
+          } @else {
+            <span class="pill pill-{{ t.status }}">{{ statusLabels[t.status] }}</span>
+            <p class="hint">You can’t change this task’s status.</p>
+          }
+        </div>
+
+        <!-- Assignee / reassign -->
+        <div class="card card-pad">
+          <h3 class="side-title">Assignee</h3>
+          <div class="assignee-now">
+            <span class="mini-avatar">{{ (t.assigned_to_username || '–').charAt(0).toUpperCase() }}</span>
+            {{ t.assigned_to_username || 'Unassigned' }}
+          </div>
+          @if (canManage()) {
+            <div class="field" style="margin-top:14px">
+              <label class="label">Reassign to</label>
+              <select class="select" [formControl]="assignCtrl">
+                <option [ngValue]="null" disabled>Choose a user…</option>
+                @for (u of users(); track u.id) {
+                  <option [ngValue]="u.id">{{ u.username }} ({{ u.role }})</option>
+                }
+              </select>
+            </div>
+            <button class="btn btn-ghost btn-sm" [disabled]="saving() || assignCtrl.value === t.assigned_to"
+                    (click)="reassign()">Reassign & notify</button>
+          }
+        </div>
+
+        <!-- Meta -->
+        <div class="card card-pad meta">
+          <div class="meta-row"><span class="muted">Created by</span><span>{{ t.created_by_username || '—' }}</span></div>
+          <div class="meta-row"><span class="muted">Created</span><span>{{ t.created_at | date: 'MMM d, y, h:mm a' }}</span></div>
+          <div class="meta-row"><span class="muted">Updated</span><span>{{ t.updated_at | date: 'MMM d, y, h:mm a' }}</span></div>
+        </div>
+
+        <!-- Danger zone (Admin only) -->
+        @if (isAdmin()) {
+          <div class="card card-pad danger-zone">
+            <h3 class="side-title">Danger zone</h3>
+            <p class="hint">Deleting a task is permanent.</p>
+            <button class="btn btn-danger btn-sm" [disabled]="saving()" (click)="remove()">Delete task</button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

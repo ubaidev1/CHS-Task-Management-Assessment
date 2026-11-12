@@ -1,0 +1,57 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">
+        @if (user(); as u) { Hello, {{ u.username }} 👋 } @else { Dashboard }
+      </h1>
+      <p class="page-sub">{{ scopeNote() }}</p>
+    </div>
+    <a routerLink="/tasks" class="btn btn-ghost">View tasks</a>
+  </div>
+
+  @if (loading()) {
+    <div class="stat-grid">
+      @for (i of [1,2,3,4]; track i) {
+        <div class="card card-pad stat">
+          <div class="skeleton" style="height:14px;width:60%"></div>
+          <div class="skeleton" style="height:34px;width:40%;margin-top:14px"></div>
+        </div>
+      }
+    </div>
+  } @else if (error()) {
+    <div class="card card-pad">
+      <div class="alert alert-error">{{ error() }}</div>
+      <button class="btn btn-ghost" style="margin-top:14px" (click)="load()">Retry</button>
+    </div>
+  } @else if (stats(); as s) {
+    <div class="stat-grid">
+      <div class="card card-pad stat">
+        <div class="stat-top"><span class="stat-ico ico-total">▦</span><span class="stat-label">Total tasks</span></div>
+        <div class="stat-num mono">{{ s.total_tasks }}</div>
+      </div>
+      <div class="card card-pad stat">
+        <div class="stat-top"><span class="stat-ico ico-done">✓</span><span class="stat-label">Completed</span></div>
+        <div class="stat-num mono">{{ s.completed_tasks }}</div>
+      </div>
+      <div class="card card-pad stat">
+        <div class="stat-top"><span class="stat-ico ico-pending">◷</span><span class="stat-label">Pending</span></div>
+        <div class="stat-num mono">{{ s.pending_tasks }}</div>
+      </div>
+      <div class="card card-pad stat">
+        <div class="stat-top"><span class="stat-ico ico-mine">★</span><span class="stat-label">My tasks</span></div>
+        <div class="stat-num mono">{{ s.my_tasks }}</div>
+      </div>
+    </div>
+
+    <div class="card card-pad progress-card">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <h3>Completion rate</h3>
+          <p class="page-sub">{{ s.completed_tasks }} of {{ s.total_tasks }} tasks completed</p>
+        </div>
+        <div class="progress-pct mono">{{ completion() }}%</div>
+      </div>
+      <div class="bar"><div class="bar-fill" [style.width.%]="completion()"></div></div>
+    </div>
+  }
+</div>

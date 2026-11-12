@@ -51,7 +51,7 @@ class TaskRBACTests(APITestCase):
         self.assertEqual(resp.data[0]["id"], self.task1.id)
 
     def test_anonymous_is_denied(self):
-        self.assertEqual(self.client.get(self.list_url).status_code, 403)
+        self.assertEqual(self.client.get(self.list_url).status_code, 401)
 
     # --- create (Admin/Manager only) ------------------------------------
     def test_employee_cannot_create_task(self):
@@ -155,7 +155,7 @@ class DashboardCacheTests(APITestCase):
                                   "pending_tasks": 1, "my_tasks": 2})
 
     def test_anonymous_is_denied(self):
-        self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(self.client.get(self.url).status_code, 401)
 
     # --- caching behaviour ----------------------------------------------
     def test_repeated_request_uses_cache(self):

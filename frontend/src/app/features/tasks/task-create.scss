@@ -1,0 +1,9 @@
+:host { display: block; }
+
+.narrow { max-width: 680px; }
+.back { display: inline-block; color: var(--muted); font-weight: 600; font-size: 0.88rem; margin-bottom: 16px; }
+.back:hover { color: var(--accent); }
+.req { color: var(--danger); }
+
+.form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .form-cols { grid-template-columns: 1fr; } }

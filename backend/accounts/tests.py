@@ -65,7 +65,7 @@ class AuthEndpointTests(APITestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_me_requires_authentication(self):
-        self.assertEqual(self.client.get(self.me_url).status_code, 403)
+        self.assertEqual(self.client.get(self.me_url).status_code, 401)
 
     def test_expired_session_is_rejected(self):
         self.client.login(username="alice", password=self.password)
@@ -73,13 +73,13 @@ class AuthEndpointTests(APITestCase):
         session = self.client.session
         session.set_expiry(-1)
         session.save()
-        self.assertEqual(self.client.get(self.me_url).status_code, 403)
+        self.assertEqual(self.client.get(self.me_url).status_code, 401)
 
     def test_logout_invalidates_session(self):
         self.client.login(username="alice", password=self.password)
         self.assertEqual(self.client.post(self.logout_url).status_code, 204)
         # After logout the session no longer grants access.
-        self.assertEqual(self.client.get(self.me_url).status_code, 403)
+        self.assertEqual(self.client.get(self.me_url).status_code, 401)
 
     # --- session / CSRF --------------------------------------------------
     def test_session_endpoint_reports_state_and_sets_csrf_cookie(self):

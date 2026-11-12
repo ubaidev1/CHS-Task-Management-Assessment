@@ -1,0 +1,24 @@
+:host { display: block; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+.stat { display: flex; flex-direction: column; gap: 6px; }
+.stat-top { display: flex; align-items: center; gap: 10px; }
+.stat-ico {
+  width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  font-size: 1rem; font-weight: 700;
+}
+.ico-total { background: var(--accent-soft); color: var(--accent-700); }
+.ico-done { background: var(--done-bg); color: var(--done); }
+.ico-pending { background: var(--pending-bg); color: var(--pending); }
+.ico-mine { background: #fff0e4; color: #c2641b; }
+.stat-label { font-size: 0.86rem; color: var(--muted); font-weight: 600; }
+.stat-num { font-size: 2.1rem; font-weight: 700; color: var(--ink-900); line-height: 1.1; }
+
+.progress-card { margin-top: 18px; }
+.progress-pct { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.bar { margin-top: 16px; height: 10px; border-radius: 999px; background: #edecf4; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--accent-grad); transition: width 0.5s ease; }
+
+@media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .stat-grid { grid-template-columns: 1fr; } }

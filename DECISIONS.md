@@ -158,6 +158,23 @@ commit (crash in a tiny window), a retry would resend. With the console backend
 this window is negligible; documented rather than solved with a heavier
 outbox-pattern, which would be over-engineering here.
 
+## 8. Angular frontend (Module 5)
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| Framework shape | Angular 20 standalone components, signals, lazy-loaded routes | Modern idiomatic Angular; each feature is its own lazy chunk. |
+| State | Signals (`AuthService.user`, per-page `loading/error/data`) | Simple, fine-grained reactivity without extra libraries. |
+| HTTP handling | Functional interceptors: one adds `withCredentials` + `X-CSRFToken`; one handles global 401 → login | Consistent credentialed/CSRF requests; cross-origin needs the CSRF header set manually (Angular's built-in XSRF is same-origin only). |
+| Session bootstrap | `provideAppInitializer` calls `GET /session/` before the first route | Guards see correct auth state on hard refresh, and the CSRF cookie is seeded up front. |
+| Guards | `authGuard` + `roleGuard(...)` | Usability only — routes/actions are hidden for the wrong role, but the backend independently enforces every permission. |
+| API origin | Absolute `http://localhost:8000/api` | Exercises the real cross-origin CORS + session/CSRF path (verified end-to-end) rather than hiding it behind a dev proxy. |
+| Design | Custom design-token system (ink sidebar, indigo accent, status pills, soft cards); no component library | A distinct, cohesive, responsive look; every page has explicit loading, empty and error states. |
+
+- 401 vs 403 split (backend change): unauthenticated → **401** (interceptor routes to
+  login), authorized-but-forbidden → **403** (component shows an inline message).
+- Field-level UI mirrors the backend: Employees only see a status control on their
+  own tasks; managers/admins get full edit + reassign; only admins see delete.
+
 ---
 
 ## Assumptions (brief is silent)
