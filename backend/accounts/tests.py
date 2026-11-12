@@ -116,3 +116,54 @@ class AuthEndpointTests(APITestCase):
         )
         # Now logout WITHOUT a CSRF token must be rejected.
         self.assertEqual(csrf_client.post(self.logout_url).status_code, 403)
+
+
+class UserManagementTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_user("admin", "admin@e.com", "pw", role=Role.ADMIN)
+        cls.manager = User.objects.create_user("manager", "m@e.com", "pw", role=Role.MANAGER)
+        cls.employee = User.objects.create_user("emp", "emp@e.com", "pw", role=Role.EMPLOYEE)
+        cls.list_url = reverse("user-list")
+
+    def test_manager_can_list_users(self):
+        self.client.force_authenticate(self.manager)
+        self.assertEqual(self.client.get(self.list_url).status_code, 200)
+
+    def test_employee_cannot_list_users(self):
+        self.client.force_authenticate(self.employee)
+        self.assertEqual(self.client.get(self.list_url).status_code, 403)
+
+    def test_admin_can_create_user_with_role(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post(
+            self.list_url,
+            {
+                "username": "newbie",
+                "email": "newbie@e.com",
+                "role": Role.MANAGER,
+                "password": "Sxk9#mZ2qL",
+            },
+        )
+        self.assertEqual(resp.status_code, 201)
+        created = User.objects.get(username="newbie")
+        self.assertEqual(created.role, Role.MANAGER)
+        self.assertTrue(created.check_password("Sxk9#mZ2qL"))  # password hashed, usable
+        self.assertNotIn("password", resp.data)  # never echoed back
+
+    def test_manager_cannot_create_user(self):
+        self.client.force_authenticate(self.manager)
+        resp = self.client.post(
+            self.list_url,
+            {"username": "x", "email": "x@e.com", "role": Role.EMPLOYEE, "password": "Sxk9#mZ2qL"},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_employee_cannot_escalate_own_role(self):
+        """A non-admin cannot modify users (so cannot promote themselves)."""
+        self.client.force_authenticate(self.employee)
+        detail = reverse("user-detail", args=[self.employee.id])
+        resp = self.client.patch(detail, {"role": Role.ADMIN})
+        self.assertEqual(resp.status_code, 403)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.role, Role.EMPLOYEE)

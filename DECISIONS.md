@@ -85,6 +85,31 @@ progresses, module by module.
 cookie (readable by Angular) → Angular sends it as `X-CSRFToken` on every unsafe
 request → Django validates header against cookie. Session cookie stays HttpOnly.
 
+## 5. RBAC, tasks & user management (Module 2)
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| View style | `ModelViewSet` + router for tasks/users | Standard CRUD maps cleanly to a ViewSet and DRF's object-level permission hooks; contrast with the auth APIViews, which are actions, not resources. |
+| Permission enforcement | Reusable `BasePermission` classes (`TaskPermission`, `UserManagementPermission`) | `has_permission` gates the action by role; `has_object_permission` gates the specific object — backend is the source of truth. |
+| Employee task visibility | Queryset scoped in `get_queryset` | Employees' queryset is `assigned_to=self`, so cross-user access by ID returns **404, not 403** (no existence leak). Object permission is defense in depth. |
+| Field-level limit | Employee serializer makes every field except `status` read-only | Enforces "Employee updates only status" server-side; extra payload keys are ignored, not applied. |
+| Ownership | `created_by` set in `perform_create` from `request.user`; read-only in serializer | A client cannot spoof ownership via the payload (tested). |
+| Delete | Admin only (view-level + object-level) | Matches the matrix; Manager/Employee get 403. |
+| User creation | `UserCreateSerializer` (password write-only, `validate_password`); Admin only | Manager can list but not create (403, tested). Role is set only on admin-driven create. |
+| Self-escalation | Non-admin cannot modify users (403) | An employee cannot promote their own role (tested). |
+| FK on_delete | `assigned_to` / `created_by` = `SET_NULL` | Deleting a user never cascades away task history; employee scoping still holds. |
+
+*Assumption:* Admin/Manager may update any task (they manage all); Employee may
+update only the `status` of a task assigned to them. A task may be created
+unassigned and assigned later (the dedicated `/assign/` endpoint is Module 4).
+
+*N+1 note:* task `assigned_to`/`created_by` use DRF's PK-only optimization (no
+per-row query); `select_related` is added as defensive belt-and-suspenders.
+
+*Inactive users:* DRF `SessionAuthentication` rejects users with `is_active=False`
+(returns `None`), so a deactivated user's live session is denied on the next
+request — fail-closed without an extra check.
+
 ---
 
 ## Assumptions (brief is silent)

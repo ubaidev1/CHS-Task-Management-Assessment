@@ -1,12 +1,14 @@
 from django.contrib.auth import authenticate, login, logout
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import LoginSerializer, UserSerializer
+from .models import User
+from .permissions import UserManagementPermission
+from .serializers import LoginSerializer, UserCreateSerializer, UserSerializer
 
 
 @method_decorator(csrf_protect, name="post")
@@ -69,3 +71,15 @@ class SessionView(APIView):
         if request.user.is_authenticated:
             return Response({"authenticated": True, "user": UserSerializer(request.user).data})
         return Response({"authenticated": False})
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """User management: Admin/Manager can view; only Admin can create/modify."""
+
+    queryset = User.objects.all().order_by("id")
+    permission_classes = [UserManagementPermission]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return UserCreateSerializer
+        return UserSerializer
